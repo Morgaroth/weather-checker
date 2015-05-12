@@ -8,7 +8,7 @@ import spray.can.Http
 import spray.routing._
 
 
-object Server extends App with WebApi with Backend {
+object Server extends App with Backend with WebApi {
   val serviceActorProps = Props(new HttpServiceActor {
     override def receive: Actor.Receive = runRoute(routes)
   })
