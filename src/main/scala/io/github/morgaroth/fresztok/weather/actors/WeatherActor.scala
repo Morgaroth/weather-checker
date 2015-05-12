@@ -9,6 +9,7 @@ import scala.concurrent.Future
 import scala.util.{Failure, Success}
 
 object WeatherActor {
+
   case class CheckWeather(city: String)
 
   def props() = Props(classOf[WeatherActor])
