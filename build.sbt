@@ -19,7 +19,8 @@ libraryDependencies ++= {
     "com.typesafe.akka" %% "akka-slf4j" % akkaV,
     "ch.qos.logback" % "logback-classic" % "1.1.2",
     "net.ceedubs" %% "ficus" % "1.1.2",
-    "io.github.morgaroth" %% "spray-json-annotation" % "0.4.2"
+    "io.github.morgaroth" %% "spray-json-annotation" % "0.4.2",
+    "joda-time" % "joda-time" % "2.7"
   )
 }
 
