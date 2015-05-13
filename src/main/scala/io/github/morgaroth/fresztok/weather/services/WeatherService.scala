@@ -9,6 +9,7 @@ import io.github.morgaroth.fresztok.weather.actors.OpenWeather
 import io.github.morgaroth.fresztok.weather.actors.WeatherActor.CheckWeather
 import org.joda.time.DateTime
 import shapeless.HNil
+import spray.client.pipelining._
 import spray.http.HttpEncodings.gzip
 import spray.http.StatusCodes
 import spray.http.StatusCodes._
@@ -34,6 +35,8 @@ class WeatherService(worker: ActorRef)(implicit as: ActorSystem) extends Directi
 
   var cache = Map.empty[String, (DateTime, OpenWeather)]
   var todos = Map.empty[String, TODO]
+
+  val pipe = sendReceive ~> unmarshal[OpenWeather]
 
 
   val logRequestResponseOwn: Directive[HNil] = mapRequest(req => {
@@ -77,25 +80,26 @@ class WeatherService(worker: ActorRef)(implicit as: ActorSystem) extends Directi
         pathPrefix("todos") {
           pathEndOrSingleSlash {
             get(complete(todos.values.toList)) ~
-            post(handleWith {
-              (newTodo: TODO) =>
-                todos += newTodo.id -> newTodo
-                StatusCodes.Created -> newTodo
-            })
-          } ~
-          pathPrefix(Segment) { id =>
-            pathEndOrSingleSlash{
-              get(complete(todos.get(id))) ~
-              delete(complete{
-                todos -= id
-                NoContent -> ""
+              post(handleWith {
+                (newTodo: TODO) =>
+                  todos += newTodo.id -> newTodo
+                  StatusCodes.Created -> newTodo
               })
+          } ~
+            pathPrefix(Segment) { id =>
+              pathEndOrSingleSlash {
+                get(complete(todos.get(id))) ~
+                  delete(complete {
+                    todos -= id
+                    NoContent -> ""
+                  })
 
-          }
+              }
+            }
         }
-
     }
 
+  val api = "http://api.openweathermap.org/data/2.5/weather"
 
   def fetchWeatherFor(city: String, fresh: DateTime): Future[ToResponseMarshallable] = {
     cache.get(city) match {
@@ -104,12 +108,12 @@ class WeatherService(worker: ActorRef)(implicit as: ActorSystem) extends Directi
         Future[ToResponseMarshallable](OK -> what)
       case _ =>
         log.info(s"cache is too old or missing for $city")
-        (worker ? CheckWeather(city)).mapTo[Try[OpenWeather]].collect[ToResponseMarshallable] {
-          case Success(ow) =>
-            cache += city ->(DateTime.now(), ow)
-            OK -> ow
-          case Failure(timeout: AskTimeoutException) => RequestTimeout -> "Try in 5 minutes!"
-          case Failure(anotherErr) => InternalServerError -> s"${anotherErr.getCause}${anotherErr.getStackTrace.map(_.toString).mkString("\n\t", "\n\t", "\n")}"
+        pipe(Get(s"$api?q=$city")).map[ToResponseMarshallable] { ow =>
+          cache += city ->(DateTime.now(), ow)
+          OK -> ow
+        } recover[ToResponseMarshallable] {
+          case timeout: AskTimeoutException => RequestTimeout -> "Try in 5 minutes!"
+          case anotherErr => InternalServerError -> s"${anotherErr.getCause}${anotherErr.getStackTrace.map(_.toString).mkString("\n\t", "\n\t", "\n")}"
         }
     }
   }
